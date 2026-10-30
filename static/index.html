@@ -63,7 +63,7 @@ async function loadDeals(){
       <div>
         <span class="store ${d.store}">${d.store.toUpperCase()}</span>
         <strong>${esc(d.product_name)}</strong>
-        <span class="muted">${esc(d.deal_text||'')}</span><br><span class="muted">per-unit: $${d.unit_price.toFixed(3)}/${esc(d.canonical||'unit')} ${d.hist_min?`· hist low $${d.hist_min.toFixed(3)} · avg $${d.hist_avg.toFixed(3)}`:''}</span>
+        <span class="muted">${esc(d.deal_text||'')}</span><br><span class="muted">${d.disp_val!==null?`${d.disp_label} $${d.disp_val.toFixed(2)} · raw $${d.unit_price.toFixed(4)}/${esc(d.canonical)}`:''} ${d.hist_min?`· hist low $${d.hist_min.toFixed(4)} · avg $${d.hist_avg.toFixed(4)}`:''}</span>
       </div>
       <div>${fmtScore(d)} <span class="price">$${d.price.toFixed(2)}</span> <span class="muted">${esc(d.unit||'')}</span></div>
     </div>`).join('');
@@ -82,7 +82,7 @@ async function doSearch(){
   html += cmp.map(c=>`
     <div class="card">
       <div><span class="store ${c.store}">${c.store.toUpperCase()}</span> ${esc(c.product_name)}</div>
-      <div><span class="price">$${c.price.toFixed(2)}</span> <span class="muted">${esc(c.unit||'')}</span><br><span class="muted">per-unit: $${c.unit_price.toFixed(3)}</span></div>
+      <div><span class="price">$${c.price.toFixed(2)}</span> <span class="muted">${esc(c.unit||'')}</span><br><span class="muted">${c.disp_val!==null&&c.disp_val!==undefined?`${c.disp_label} $${c.disp_val.toFixed(2)}`:`per-unit $${c.unit_price.toFixed(4)}`}</span></div>
     </div>`).join('') || '<p class="muted">No matches.</p>';
   if (hist.length){
     const maxP = Math.max(...hist.map(h=>h.unit_price));

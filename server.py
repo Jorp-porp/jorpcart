@@ -19,7 +19,7 @@ import sys
 if sys_path not in sys.path:
     sys.path.insert(0, sys_path)
 
-from utils.unit_price import normalize  # noqa: E402
+from utils.unit_price import normalize, display  # noqa: E402
 
 DB_URL = os.environ.get(
     "JORPCART_DB_URL",
@@ -57,6 +57,7 @@ def week_deals():
         up, key = normalize(r["price"], r["unit"])
         r["unit_price_v"] = up
         r["canonical"] = key
+        r["disp_val"], r["disp_label"] = display(up, key)
         r["norm_name"] = norm_name(r["product_name"])
     return rows
 
@@ -115,6 +116,8 @@ def deals(limit: int = 200):
                 "price": float(r["price"]),
                 "unit_price": r["unit_price_v"],
                 "canonical": r["canonical"],
+                "disp_val": r["disp_val"],
+                "disp_label": r["disp_label"],
                 "unit": r["unit"],
                 "deal_text": r["deal_text"],
                 "score": r["score"],
@@ -144,11 +147,15 @@ def search(q: str):
     for r in rows:
         s = r["store"]
         if s not in by_store:
+            up, ck = normalize(r["price"], r["unit"]) if not r["unit_price"] else (float(r["unit_price"]), None)
+            dv, dl = display(up or (float(r["unit_price"]) if r["unit_price"] else None), ck) if ck else (None, None)
             by_store[s] = {
                 "store": s,
                 "product_name": r["product_name"],
                 "price": float(r["price"]),
                 "unit_price": float(r["unit_price"]),
+                "disp_val": dv,
+                "disp_label": dl,
                 "unit": r["unit"],
                 "deal_text": r["deal_text"],
                 "first_seen": str(r["first_seen_at"])[:10],
