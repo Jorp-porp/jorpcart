@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jorpcart</title>
+<style>
+  :root { --bg:#111; --card:#1c1c1c; --fg:#eee; --muted:#888; --acc:#4ec9b0; --meijer:#0c60a5; --aldi:#55c3f0; }
+  body { background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; margin:0; }
+  header { padding:14px 20px; border-bottom:1px solid #333; display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0; color:var(--acc); }
+  nav button { background:none; border:none; color:var(--muted); font-size:15px; cursor:pointer; padding:6px 10px; border-bottom:2px solid transparent; }
+  nav button.active { color:var(--fg); border-bottom-color:var(--acc); }
+  input { background:#222; border:1px solid #444; color:var(--fg); padding:8px 12px; border-radius:6px; min-width:240px; }
+  main { padding:20px; max-width:1100px; margin:0 auto; }
+  .card { background:var(--card); border-radius:10px; padding:12px 16px; margin:10px 0; display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
+  .store { font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px; color:#fff; white-space:nowrap; }
+  .store.meijer { background:var(--meijer); }
+  .store.aldi { background:var(--aldi); color:#000; }
+  .price { font-weight:700; font-size:17px; white-space:nowrap; }
+  .score { color:var(--acc); font-weight:700; white-space:nowrap; }
+  .score.neg { color:#e06c75; }
+  .muted { color:var(--muted); font-size:12px; }
+  table { border-collapse:collapse; width:100%; }
+  td, th { padding:6px 10px; text-align:left; border-bottom:1px solid #2a2a2a; font-size:13px; }
+  .hist-row { display:flex; gap:3px; align-items:flex-end; height:60px; margin:8px 0; }
+  .bar { background:var(--acc); width:10px; border-radius:2px 2px 0 0; }
+  .bar.meijer { background:var(--meijer); }
+  .bar.aldi { background:var(--aldi); }
+</style>
+</head>
+<body>
+<header>
+  <h1>jorpcart</h1>
+  <nav>
+    <button data-view="deals" class="active" onclick="setView('deals')">Best Deals</button>
+    <button data-view="search" onclick="setView('search')">Compare</button>
+  </nav>
+  <input id="q" placeholder="search: milk, chicken, eggs..." onkeydown="if(event.key==='Enter')doSearch()">
+  <span id="status" class="muted"></span>
+</header>
+<main id="main"></main>
+<script>
+const main = document.getElementById('main');
+const status = document.getElementById('status');
+function esc(s){ return (s??'').toString().replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmtScore(d){
+  if (d.score === null || d.score === undefined) return '<span class="muted">—</span>';
+  const cls = d.score >= 0 ? 'score' : 'score neg';
+  const txt = d.score > 0 ? '+' : '';
+  return `<span class="${cls}">${txt}${d.score}%</span>`;
+}
+function setView(v){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active', b.dataset.view===v));
+  if (v==='deals') loadDeals(); else { const q=document.getElementById('q').value; if(q) doSearch(); else main.innerHTML='<p class="muted">Type a product to compare across stores.</p>'; }
+}
+async function loadDeals(){
+  status.textContent='loading...';
+  const r = await fetch('/api/deals'); const rows = await r.json();
+  status.textContent=`${rows.length} deals this week`;
+  main.innerHTML = rows.map(d=>`
+    <div class="card">
+      <div>
+        <span class="store ${d.store}">${d.store.toUpperCase()}</span>
+        <strong>${esc(d.product_name)}</strong>
+        <span class="muted">${esc(d.deal_text||'')} ${d.hist_min?`· hist low $${d.hist_min.toFixed(2)} · avg $${d.hist_avg.toFixed(2)}`:''}</span>
+      </div>
+      <div>${fmtScore(d)} <span class="price">$${d.price.toFixed(2)}</span> <span class="muted">${esc(d.unit||'')}</span></div>
+    </div>`).join('');
+}
+async function doSearch(){
+  const q = document.getElementById('q').value.trim();
+  if(!q) return;
+  status.textContent='searching...';
+  const [cmpR, histR] = await Promise.all([
+    fetch('/api/search?q='+encodeURIComponent(q)),
+    fetch('/api/history?q='+encodeURIComponent(q))
+  ]);
+  const cmp = await cmpR.json(), hist = await histR.json();
+  status.textContent=`${cmp.length} stores · ${hist.length} history points`;
+  let html = '<h3>Cheapest right now</h3>';
+  html += cmp.map(c=>`
+    <div class="card">
+      <div><span class="store ${c.store}">${c.store.toUpperCase()}</span> ${esc(c.product_name)}</div>
+      <div><span class="price">$${c.price.toFixed(2)}</span> <span class="muted">${esc(c.unit||'')}</span></div>
+    </div>`).join('') || '<p class="muted">No matches.</p>';
+  if (hist.length){
+    const maxP = Math.max(...hist.map(h=>h.price));
+    html += '<h3 style="margin-top:24px">Price history</h3><div class="hist-row">';
+    html += hist.map(h=>`<div class="bar ${h.store}" title="${esc(h.product_name)} — $${h.price.toFixed(2)} (${h.date})" style="height:${(h.price/maxP)*100}%"></div>`).join('');
+    html += '</div><p class="muted">blue = aldi, dark blue = meijer · hover for details</p>';
+  }
+  main.innerHTML = html;
+}
+setView('deals');
+</script>
+</body>
+</html>

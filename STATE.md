@@ -60,6 +60,11 @@ Remove-Item C:\Users\jorp\jorpcart-tmp, C:\Users\jorp\jorpcart.zip -Recurse -For
       technique from github.com/BUTTERGANG/price-scrapers; token in adapter)
 - [x] Postgres on jorpserver (ZeroTier-only bind)
 - [x] Weekly automation on jorpserver: cron Wed 6am, ~/jorpcart/weekly.sh (Aldi)
+- [x] Web UI: server.py (FastAPI) + static/index.html
+      - run: uvicorn server:app --host 10.126.124.196 --port 8090
+      - /api/deals (scored vs history), /api/search (cross-store compare),
+        /api/history (price history), / for the UI
+      - NOT yet daemonized on jorpserver — manual start for now
 - [ ] Shopping-list SUGGESTER (not list-matching): surface what's worth
       buying — biggest discounts, cheapest staple prices per unit, regular
       buys that are currently cheap. Will use qwen (192.168.1.219:8888)
