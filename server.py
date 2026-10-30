@@ -1,16 +1,25 @@
 """jorpcart web API — deals, scoring, cross-store compare, history.
 
+All comparisons use unit_price (per canonical unit) where computable.
+
 Run: uvicorn server:app --host 10.126.124.196 --port 8090
 """
 import os
 import re
-import time
 from datetime import date
 
 import psycopg
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from psycopg.rows import dict_row
+
+sys_path = os.path.dirname(os.path.abspath(__file__))
+import sys
+
+if sys_path not in sys.path:
+    sys.path.insert(0, sys_path)
+
+from utils.unit_price import normalize  # noqa: E402
 
 DB_URL = os.environ.get(
     "JORPCART_DB_URL",
@@ -19,93 +28,84 @@ DB_URL = os.environ.get(
 
 app = FastAPI()
 
-STOP = re.compile(
-    r"\b(asst|assorted|assort|select|varieties|variety|or|the|with|and|w/|"
-    r"\d+(\.\d+)?\s?(oz|fl oz|lb|ct|pk|gal|pt|qt|l|ml|g|kg|ea)\b\.?|"
-    r"[\d.]+)\b",
-    re.I,
-)
-
-
-def norm_name(name: str) -> str:
-    """Crude product-name normalizer for cross-store matching."""
-    s = (name or "").lower()
-    s = re.sub(r"[^a-z0-9 ]", " ", s)
-    s = STOP.sub(" ", s)
-    words = [w for w in s.split() if len(w) > 1]
-    return " ".join(sorted(set(words))[:6])
-
 
 def connect():
     return psycopg.connect(DB_URL, row_factory=dict_row)
 
 
 def week_deals():
-    """This week's deals: for dated rows use valid window; else latest run."""
+    """This week's deals: dated rows use the valid window; else latest run."""
     today = date.today()
     with connect() as conn, conn.cursor() as cur:
         cur.execute(
             """
             SELECT d.* FROM deals d
-            WHERE (d.valid_from IS NOT NULL AND d.valid_from <= %s
-                   AND (d.valid_to IS NULL OR d.valid_to >= %s))
-            UNION
-            SELECT d.* FROM deals d
-            WHERE d.valid_from IS NULL
-              AND d.first_seen_at >= (SELECT max(first_seen_at) - interval '2 days'
-                                      FROM deals WHERE store = d.store)
+            WHERE d.price IS NOT NULL
+              AND (
+                (d.valid_from IS NOT NULL AND d.valid_from <= %s
+                 AND (d.valid_to IS NULL OR d.valid_to >= %s))
+                OR
+                (d.valid_from IS NULL
+                 AND d.first_seen_at >= (SELECT max(first_seen_at) - interval '2 days'
+                                         FROM deals WHERE store = d.store))
+              )
             """,
             (today, today),
         )
-        return cur.fetchall()
+        rows = cur.fetchall()
+    for r in rows:
+        up, key = normalize(r["price"], r["unit"])
+        r["unit_price_v"] = up
+        r["canonical"] = key
+        r["norm_name"] = norm_name(r["product_name"])
+    return rows
 
 
-def score_deals(deals):
-    """Score = how good this week's price is vs history (per normalized name)."""
-    stats = {}
-    with connect() as conn, conn.cursor() as cur:
-        for d in deals:
-            k = norm_name(d["product_name"])
-            if not k or k in stats:
-                continue
-            cur.execute(
-                """
-                SELECT min(price) AS mn, avg(price) AS av, count(*) AS n
-                FROM deals
-                WHERE price IS NOT NULL
-                  AND lower(product_name) LIKE %s
-                  AND first_seen_at < now() - interval '5 days'
-                """,
-                (f"%{k.split()[0]}%",),
-            )
-            row = cur.fetchone()
-            if row and row["n"]:
-                stats[k] = row
-
-    for d in deals:
-        d["norm_key"] = norm_name(d["product_name"])
-        d["score"] = None
-        d["hist_min"] = None
-        d["hist_avg"] = None
-        if d["price"] is None:
-            continue
-        st = stats.get(d["norm_key"])
-        if st and st["mn"]:
-            d["hist_min"] = float(st["mn"])
-            d["hist_avg"] = float(st["av"])
-            if d["hist_min"] > 0:
-                d["score"] = round(
-                    100 * (d["hist_min"] - float(d["price"])) / d["hist_min"], 1
-                )
-    return deals
+def norm_name(name: str) -> str:
+    """Product-name normalizer for cross-store matching."""
+    s = (name or "").lower()
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    s = re.sub(
+        r"\b(asst|assorted|assort|select|varieties|variety|and|w/|"
+        r"\d+(\.\d+)?\s?(oz|fl|lb|ct|pk|gal|pt|qt|l|ml|g|kg|ea))\b",
+        " ",
+        s,
+    )
+    words = [w for w in s.split() if len(w) > 2]
+    return " ".join(sorted(set(words))[:6])
 
 
 @app.get("/api/deals")
-def deals(min_price: float = 0, limit: int = 200):
+def deals(limit: int = 200):
     rows = week_deals()
-    rows = [r for r in rows if r["price"] and float(r["price"]) >= min_price]
-    rows = score_deals(rows)
-    rows.sort(key=lambda r: (r["score"] or -999), reverse=True)
+    rows = [r for r in rows if r["unit_price_v"] is not None]
+    for r in rows:
+        r["score"] = None
+        r["hist_min"] = None
+    # score against history using unit_price stored at insert (backfilled)
+    with connect() as conn, conn.cursor() as cur:
+        for r in rows:
+            if not r["norm_name"]:
+                continue
+            cur.execute(
+                """
+                SELECT min(d.unit_price) AS mn, avg(d.unit_price) AS av, count(*) AS n
+                FROM deals d
+                WHERE d.unit_price IS NOT NULL
+                  AND d.first_seen_at < now() - interval '5 days'
+                  AND lower(d.product_name) LIKE %s
+                """,
+                (f"%{r['norm_name'].split()[0]}%",),
+            )
+            row = cur.fetchone()
+            if row and row["n"]:
+                r["hist_min"] = float(row["mn"]) if row["mn"] else None
+                r["hist_avg"] = float(row["av"]) if row["av"] else None
+                if r["hist_min"] and r["hist_min"] > 0:
+                    r["score"] = round(
+                        100 * (r["hist_min"] - r["unit_price_v"]) / r["hist_min"], 1
+                    )
+    rows.sort(key=lambda r: (r["score"] if r["score"] is not None else -999), reverse=True)
     out = []
     for r in rows[:limit]:
         out.append(
@@ -113,10 +113,10 @@ def deals(min_price: float = 0, limit: int = 200):
                 "store": r["store"],
                 "product_name": r["product_name"],
                 "price": float(r["price"]),
+                "unit_price": r["unit_price_v"],
+                "canonical": r["canonical"],
                 "unit": r["unit"],
                 "deal_text": r["deal_text"],
-                "valid_from": str(r["valid_from"] or ""),
-                "valid_to": str(r["valid_to"] or ""),
                 "score": r["score"],
                 "hist_min": r["hist_min"],
                 "hist_avg": r["hist_avg"],
@@ -127,16 +127,15 @@ def deals(min_price: float = 0, limit: int = 200):
 
 @app.get("/api/search")
 def search(q: str):
-    """Cross-store compare: best price per store for matching items."""
+    """Cross-store compare: best unit price per store."""
     like = f"%{q}%"
     with connect() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT store, product_name, price, unit, deal_text,
-                   valid_from, valid_to, first_seen_at
+            SELECT store, product_name, price, unit, unit_price, deal_text, first_seen_at
             FROM deals
-            WHERE price IS NOT NULL AND lower(product_name) LIKE %s
-            ORDER BY price ASC
+            WHERE unit_price IS NOT NULL AND lower(product_name) LIKE %s
+            ORDER BY unit_price ASC
             """,
             (like,),
         )
@@ -149,24 +148,25 @@ def search(q: str):
                 "store": s,
                 "product_name": r["product_name"],
                 "price": float(r["price"]),
+                "unit_price": float(r["unit_price"]),
                 "unit": r["unit"],
                 "deal_text": r["deal_text"],
                 "first_seen": str(r["first_seen_at"])[:10],
             }
-    return sorted(by_store.values(), key=lambda x: x["price"])
+    return sorted(by_store.values(), key=lambda x: x["unit_price"])
 
 
 @app.get("/api/history")
 def history(q: str):
-    """Price history for a search term, oldest → newest."""
+    """Unit-price history for a search term, oldest -> newest."""
     like = f"%{q}%"
     with connect() as conn, conn.cursor() as cur:
         cur.execute(
             """
-            SELECT store, product_name, price, unit, deal_text,
+            SELECT store, product_name, price, unit, unit_price, deal_text,
                    valid_from, valid_to, first_seen_at
             FROM deals
-            WHERE price IS NOT NULL AND lower(product_name) LIKE %s
+            WHERE unit_price IS NOT NULL AND lower(product_name) LIKE %s
             ORDER BY first_seen_at ASC
             LIMIT 500
             """,
@@ -178,6 +178,7 @@ def history(q: str):
             "store": r["store"],
             "product_name": r["product_name"],
             "price": float(r["price"]),
+            "unit_price": float(r["unit_price"]),
             "unit": r["unit"],
             "date": str(r["valid_from"] or str(r["first_seen_at"])[:10]),
         }

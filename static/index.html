@@ -63,7 +63,7 @@ async function loadDeals(){
       <div>
         <span class="store ${d.store}">${d.store.toUpperCase()}</span>
         <strong>${esc(d.product_name)}</strong>
-        <span class="muted">${esc(d.deal_text||'')} ${d.hist_min?`· hist low $${d.hist_min.toFixed(2)} · avg $${d.hist_avg.toFixed(2)}`:''}</span>
+        <span class="muted">${esc(d.deal_text||'')}</span><br><span class="muted">per-unit: $${d.unit_price.toFixed(3)}/${esc(d.canonical||'unit')} ${d.hist_min?`· hist low $${d.hist_min.toFixed(3)} · avg $${d.hist_avg.toFixed(3)}`:''}</span>
       </div>
       <div>${fmtScore(d)} <span class="price">$${d.price.toFixed(2)}</span> <span class="muted">${esc(d.unit||'')}</span></div>
     </div>`).join('');
@@ -82,12 +82,12 @@ async function doSearch(){
   html += cmp.map(c=>`
     <div class="card">
       <div><span class="store ${c.store}">${c.store.toUpperCase()}</span> ${esc(c.product_name)}</div>
-      <div><span class="price">$${c.price.toFixed(2)}</span> <span class="muted">${esc(c.unit||'')}</span></div>
+      <div><span class="price">$${c.price.toFixed(2)}</span> <span class="muted">${esc(c.unit||'')}</span><br><span class="muted">per-unit: $${c.unit_price.toFixed(3)}</span></div>
     </div>`).join('') || '<p class="muted">No matches.</p>';
   if (hist.length){
-    const maxP = Math.max(...hist.map(h=>h.price));
+    const maxP = Math.max(...hist.map(h=>h.unit_price));
     html += '<h3 style="margin-top:24px">Price history</h3><div class="hist-row">';
-    html += hist.map(h=>`<div class="bar ${h.store}" title="${esc(h.product_name)} — $${h.price.toFixed(2)} (${h.date})" style="height:${(h.price/maxP)*100}%"></div>`).join('');
+    html += hist.map(h=>`<div class="bar ${h.store}" title="${esc(h.product_name)} — $${h.unit_price.toFixed(3)}/unit (${h.date})" style="height:${(h.unit_price/maxP)*100}%"></div>`).join('');
     html += '</div><p class="muted">blue = aldi, dark blue = meijer · hover for details</p>';
   }
   main.innerHTML = html;
