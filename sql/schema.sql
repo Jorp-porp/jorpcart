@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS deals (
     source       TEXT NOT NULL,
     raw          JSONB,
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (store, product_name, deal_text, valid_from)
+    UNIQUE NULLS NOT DISTINCT (store, product_name, deal_text, valid_from)
 );
 
 CREATE INDEX IF NOT EXISTS idx_deals_store_dates
