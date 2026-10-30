@@ -40,17 +40,6 @@ def connect():
     return psycopg.connect(DB_URL, row_factory=dict_row)
 
 
-def current_week-deals():
-    """Deals whose valid window covers today, or (Aldi) most recent per source."""
-    with connect() as conn, conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT DISTINCT ON (source) source, min(first_seen_at) AS seen
-            FROM deals GROUP BY source
-            """
-        )
-
-
 def week_deals():
     """This week's deals: for dated rows use valid window; else latest run."""
     today = date.today()
@@ -69,35 +58,6 @@ def week_deals():
             (today, today),
         )
         return cur.fetchall()
-
-
-def stats_for(keys):
-    """Historical min/avg price per normalized name key."""
-    if not keys:
-        return {}
-    with connect() as conn, conn.cursor() as cur:
-        cur.execute(
-            """
-            CREATE TEMP TABLE _keys (k text PRIMARY KEY) ON COMMIT DROP
-            """
-        ) if False else None
-        out = {}
-        for k in set(keys):
-            cur.execute(
-                """
-                SELECT min(price) AS mn, avg(price) AS av, count(*) AS n
-                FROM deals
-                WHERE price IS NOT NULL
-                  AND (regexp_replace(lower(product_name), '[^a-z0-9 ]', ' ', 'g')
-                       LIKE %s)
-                  AND first_seen_at < now() - interval '6 days'
-                """,
-                (f"%{k.split(' ')[0]}%" if k else "%",),
-            )
-            row = cur.fetchone()
-            if row and row["n"]:
-                out[k] = row
-        return out
 
 
 def score_deals(deals):
