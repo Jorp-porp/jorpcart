@@ -18,7 +18,7 @@ import requests
 STORE = "meijer"
 FLIPP_API = "https://api.flipp.com/flyerkit/v4.0"
 FLIPP_TOKEN = "81771d0c149847a93bc30b8e5b65bffb"
-STORE_ID = os.environ.get("MEIJER_STORE_ID", "22")
+STORE_ID = os.environ.get("MEIJER_STORE_ID", "21")
 
 HEADERS = {
     "User-Agent": (
