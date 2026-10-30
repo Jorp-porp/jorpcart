@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TABLE IF NOT EXISTS deals (
     id           BIGSERIAL PRIMARY KEY,
     store        TEXT NOT NULL,
@@ -19,5 +21,3 @@ CREATE INDEX IF NOT EXISTS idx_deals_store_dates
     ON deals (store, valid_from, valid_to);
 CREATE INDEX IF NOT EXISTS idx_deals_name_trgm
     ON deals USING gin (product_name gin_trgm_ops);
-
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
