@@ -62,7 +62,6 @@ def week_deals():
         r["score"] = None
         r["hist_min"] = None
         r["hist_avg"] = None
-        r["norm_name"] = norm_name(r["product_name"])
     return rows
 
 
