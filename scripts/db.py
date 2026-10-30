@@ -2,23 +2,21 @@
 
 Connection precedence:
 1. JORPCART_DB_URL (full postgres:// URL)
-2. PGHOST/PGUSER/PGPASSWORD/PGDATABASE/PGPORT
+2. Fallback default: jorpcart-postgres on jorpserver (ZeroTier IP, LAN-only)
 """
 import os
+
 import psycopg
+from psycopg.types.json import Jsonb
+
+DEFAULT_URL = (
+    "postgresql://jorpcart:jorpcart-local-2026@10.126.124.196:5432/jorpcart"
+)
 
 
 def connect():
-    url = os.environ.get("JORPCART_DB_URL")
-    if url:
-        return psycopg.connect(url)
-    return psycopg.connect(
-        host=os.environ.get("PGHOST", "10.126.124.196"),
-        port=int(os.environ.get("PGPORT", "5432")),
-        user=os.environ.get("PGUSER", "jorpcart"),
-        password=os.environ["PGPASSWORD"],
-        dbname=os.environ.get("PGDATABASE", "jorpcart"),
-    )
+    url = os.environ.get("JORPCART_DB_URL", DEFAULT_URL)
+    return psycopg.connect(url)
 
 
 def upsert_deals(deals):
@@ -28,7 +26,7 @@ def upsert_deals(deals):
                        unit, deal_text, valid_from, valid_to, source, raw)
     VALUES (%(store)s, %(store_location)s, %(product_name)s, %(price)s,
             %(unit_price)s, %(unit)s, %(deal_text)s, %(valid_from)s,
-            %(valid_to)s, %(source)s, %(raw)s::jsonb)
+            %(valid_to)s, %(source)s, %(raw)s)
     ON CONFLICT (store, product_name, deal_text, valid_from) DO NOTHING
     RETURNING id;
     """
@@ -36,7 +34,7 @@ def upsert_deals(deals):
     with connect() as conn:
         with conn.cursor() as cur:
             for d in deals:
-                cur.execute(sql, {**d, "raw": psycopg.types.json.Jsonb(d["raw"])})
+                cur.execute(sql, {**d, "raw": Jsonb(d["raw"])})
                 if cur.fetchone():
                     inserted += 1
     return inserted
@@ -44,6 +42,6 @@ def upsert_deals(deals):
 
 if __name__ == "__main__":
     with connect() as conn, conn.cursor() as cur:
-        cur.execute("SELECT store, count(*) FROM deals GROUP BY store")
+        cur.execute("SELECT store, count(*), count(price) FROM deals GROUP BY store")
         for row in cur.fetchall():
             print(row)
