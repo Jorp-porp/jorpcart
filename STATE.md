@@ -56,9 +56,10 @@ Remove-Item C:\Users\jorp\jorpcart-tmp, C:\Users\jorp\jorpcart.zip -Recurse -For
 
 ## Roadmap status
 - [x] Phase 1: Aldi adapter (flyer + prices via GraphQL)
+- [x] Meijer adapter (Flipp flyerkit API, store 21 = Gull Rd Kalamazoo;
+      technique from github.com/BUTTERGANG/price-scrapers; token in adapter)
 - [x] Postgres on jorpserver (ZeroTier-only bind)
-- [ ] Weekly automation on jorpserver (cron or systemd timer)
-- [ ] Meijer adapter (same technique: DevTools → graphql hashes)
+- [x] Weekly automation on jorpserver: cron Wed 6am, ~/jorpcart/weekly.sh (Aldi)
 - [ ] Shopping-list SUGGESTER (not list-matching): surface what's worth
       buying — biggest discounts, cheapest staple prices per unit, regular
       buys that are currently cheap. Will use qwen (192.168.1.219:8888)
