@@ -59,6 +59,10 @@ def week_deals():
         r["canonical"] = key
         r["disp_val"], r["disp_label"] = display(up, key)
         r["norm_name"] = norm_name(r["product_name"])
+        r["score"] = None
+        r["hist_min"] = None
+        r["hist_avg"] = None
+        r["norm_name"] = norm_name(r["product_name"])
     return rows
 
 
